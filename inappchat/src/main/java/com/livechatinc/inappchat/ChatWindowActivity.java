@@ -16,7 +16,7 @@ import java.util.HashSet;
  * Created by Łukasz Jerciński on 10/02/2017.
  */
 
-public final class ChatWindowActivity extends FragmentActivity {
+public class ChatWindowActivity extends FragmentActivity {
     private static final HashSet<String> DEFINED_KEYS = new HashSet<>();
 
     static {
