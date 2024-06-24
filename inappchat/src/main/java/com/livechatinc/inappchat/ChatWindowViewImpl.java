@@ -66,7 +66,6 @@ public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
     private TextView statusText;
     private Button reloadButton;
     private ProgressBar progressBar;
-    private WebView webViewPopup;
     private ChatWindowEventsListener eventsListener;
     private static final int REQUEST_CODE_FILE_UPLOAD = 21354;
     private static final int REQUEST_CODE_AUDIO_PERMISSIONS = 89292;
@@ -101,7 +100,7 @@ public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
         reloadButton.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View view) {
-                reload();
+                reload(true);
             }
         });
 
@@ -219,6 +218,7 @@ public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
         return isFullScreen;
     }
 
+    @Deprecated
     private void reload() {
         if (initialized) {
             chatUiReady = false;
@@ -385,7 +385,6 @@ public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
                         initialized = true;
                         if (chatUrl != null && getContext() != null) {
                             webView.loadUrl(chatUrl);
-                            webView.setVisibility(VISIBLE);
                         }
                         if (eventsListener != null) {
                             eventsListener.onWindowInitialized();
@@ -482,15 +481,10 @@ public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
     class LCWebViewClient extends WebViewClient {
         @Override
         public void onPageFinished(WebView view, String url) {
-            if (url.startsWith("https://www.facebook.com/dialog/return/arbiter")) {
-                if (webViewPopup != null) {
-                    webViewPopup.setVisibility(GONE);
-                    removeView(webViewPopup);
-                    webViewPopup = null;
-                }
-            }
-
             super.onPageFinished(view, url);
+            if (webView != null) {
+                webView.setVisibility(VISIBLE);
+            }
         }
 
         @TargetApi(Build.VERSION_CODES.M)
@@ -543,12 +537,6 @@ public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
             if (facebookLogin) {
                 return false;
             } else {
-                if (webViewPopup != null) {
-                    webViewPopup.setVisibility(GONE);
-                    removeView(webViewPopup);
-                    webViewPopup = null;
-                }
-
                 String originalUrl = webView.getOriginalUrl();
                 if (uriString.equals(originalUrl) || isSecureLivechatIncDomain(uri.getHost())) {
                     return false;
@@ -588,25 +576,7 @@ public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
         @Override
         public boolean onCreateWindow(WebView view, boolean isDialog,
                                       boolean isUserGesture, Message resultMsg) {
-            webViewPopup = new WebView(getContext());
-
-            CookieManager cookieManager = CookieManager.getInstance();
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                cookieManager.getInstance().setAcceptThirdPartyCookies(webViewPopup, true);
-            }
-
-            webViewPopup.setVerticalScrollBarEnabled(false);
-            webViewPopup.setHorizontalScrollBarEnabled(false);
-            webViewPopup.setWebViewClient(new LCWebViewClient());
-            webViewPopup.getSettings().setJavaScriptEnabled(true);
-            webViewPopup.getSettings().setSavePassword(false);
-            webViewPopup.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT));
-            addView(webViewPopup);
-            WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
-            transport.setWebView(webViewPopup);
             resultMsg.sendToTarget();
-
             return true;
         }
 
