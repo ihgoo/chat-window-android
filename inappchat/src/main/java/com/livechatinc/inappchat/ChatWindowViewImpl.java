@@ -63,18 +63,21 @@ import java.util.regex.Pattern;
 
 public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
     private WebView webView;
-    private TextView statusText;
-    private Button reloadButton;
     private ProgressBar progressBar;
     private ChatWindowEventsListener eventsListener;
     private static final int REQUEST_CODE_FILE_UPLOAD = 21354;
     private static final int REQUEST_CODE_AUDIO_PERMISSIONS = 89292;
-
     private ValueCallback<Uri> mUriUploadCallback;
     private ValueCallback<Uri[]> mUriArrayUploadCallback;
     private ChatWindowConfiguration config;
     private boolean initialized;
     private boolean chatUiReady = false;
+
+    /**
+     * 在chat组件显示时，避免错误信息反复回调给上级
+     * 让错误仅此能触发一次，关闭chat组件或重新打开chat组件，错误flag会被还原
+     */
+    private boolean isErrorOccur = false;
     private ViewTreeObserver.OnGlobalLayoutListener layoutListener;
     private PermissionRequest webRequestPermissions;
 
@@ -89,20 +92,23 @@ public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
         initView(context);
     }
 
+    private void onlyShowProgressBar(){
+        progressBar.setVisibility(VISIBLE);
+        webView.setVisibility(GONE);
+    }
+
+    private void onlyShowWebView(){
+        progressBar.setVisibility(GONE);
+        webView.setVisibility(VISIBLE);
+    }
+
     private void initView(Context context) {
         setFitsSystemWindows(true);
-        setVisibility(GONE);
         LayoutInflater.from(context).inflate(R.layout.view_chat_window_internal, this, true);
         webView = findViewById(R.id.chat_window_web_view);
-        statusText = findViewById(R.id.chat_window_status_text);
         progressBar = findViewById(R.id.chat_window_progress);
-        reloadButton = findViewById(R.id.chat_window_button);
-        reloadButton.setOnClickListener(new OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                reload(true);
-            }
-        });
+
+        onlyShowProgressBar();
 
         if (Build.VERSION.RELEASE.matches("4\\.4(\\.[12])?")) {
             String userAgentString = webView.getSettings().getUserAgentString();
@@ -131,7 +137,6 @@ public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
         webView.setWebChromeClient(new LCWebChromeClient());
 
         webView.requestFocus(View.FOCUS_DOWN);
-        webView.setVisibility(GONE);
 
         webView.setOnTouchListener(new OnTouchListener() {
             public boolean onTouch(View v, MotionEvent event) {
@@ -229,10 +234,7 @@ public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
     }
 
     private void reinitialize() {
-        webView.setVisibility(View.GONE);
-        progressBar.setVisibility(View.VISIBLE);
-        statusText.setVisibility(View.GONE);
-        reloadButton.setVisibility(View.GONE);
+        onlyShowProgressBar();
 
         initialized = false;
         initialize();
@@ -297,9 +299,11 @@ public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
     }
 
     protected void onHideChatWindow() {
+        isErrorOccur = false;
         post(new Runnable() {
             @Override
             public void run() {
+                ChatWindowViewImpl.this.setVisibility(GONE);
                 hideChatWindow();
             }
         });
@@ -308,6 +312,13 @@ public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
     @Override
     public void showChatWindow() {
         ChatWindowViewImpl.this.setVisibility(VISIBLE);
+        isErrorOccur = false;
+        if (chatUiReady){
+            onlyShowWebView();
+        } else {
+            reload(true);
+        }
+
         if (eventsListener != null) {
             post(new Runnable() {
                 @Override
@@ -321,6 +332,8 @@ public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
     @Override
     public void hideChatWindow() {
         ChatWindowViewImpl.this.setVisibility(GONE);
+        webView.setVisibility(View.GONE);
+        progressBar.setVisibility(View.GONE);
         if (eventsListener != null) {
             post(new Runnable() {
                 @Override
@@ -396,11 +409,6 @@ public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
                     public void onErrorResponse(VolleyError error) {
                         Log.d("ChatWindowView", "Error response: " + error);
                         initialized = false;
-                        final int errorCode = error.networkResponse != null ? error.networkResponse.statusCode : -1;
-                        final boolean errorHandled = eventsListener != null && eventsListener.onError(ChatWindowErrorType.InitialConfiguration, errorCode, error.getMessage());
-                        if (getContext() != null) {
-                            onErrorDetected(errorHandled, ChatWindowErrorType.InitialConfiguration, errorCode, error.getMessage());
-                        }
                     }
                 });
         queue.add(stringRequest);
@@ -457,15 +465,11 @@ public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
         post(new Runnable() {
             @Override
             public void run() {
-                hideProgressBar();
+                onlyShowWebView();
             }
         });
     }
 
-    protected void hideProgressBar() {
-        progressBar.setVisibility(GONE);
-
-    }
 
     protected void onNewMessageReceived(final NewMessageModel newMessageModel) {
         if (eventsListener != null) {
@@ -482,37 +486,47 @@ public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
         @Override
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view, url);
-            if (webView != null) {
-                webView.setVisibility(VISIBLE);
+            if (webView != null&&chatUiReady) {
+                onlyShowWebView();
             }
         }
 
         @TargetApi(Build.VERSION_CODES.M)
         @Override
         public void onReceivedError(final WebView view, final WebResourceRequest request, final WebResourceError error) {
-            final boolean errorHandled = eventsListener != null && eventsListener.onError(ChatWindowErrorType.WebViewClient, error.getErrorCode(), String.valueOf(error.getDescription()));
-            post(new Runnable() {
-                @Override
-                public void run() {
-                    onErrorDetected(errorHandled, ChatWindowErrorType.WebViewClient, error.getErrorCode(), String.valueOf(error.getDescription()));
-                }
-            });
+            boolean isVisible = ChatWindowViewImpl.this.getVisibility() == View.VISIBLE;
+            if (!isErrorOccur && isVisible){
+                isErrorOccur = true;
+                final boolean errorHandled = eventsListener != null && eventsListener.onError(ChatWindowErrorType.WebViewClient, error.getErrorCode(), String.valueOf(error.getDescription()));
+                post(new Runnable() {
+                    @Override
+                    public void run() {
+                        onErrorDetected(errorHandled, ChatWindowErrorType.WebViewClient, error.getErrorCode(), String.valueOf(error.getDescription()));
+                    }
+                });
 
-            super.onReceivedError(view, request, error);
+                super.onReceivedError(view, request, error);
+                onHideChatWindow();
+            }
             Log.e("ChatWindow Widget", "onReceivedError: " + error.getErrorCode() + ": desc: " + error.getDescription() + " url: " + request.getUrl());
         }
 
         @Override
         public void onReceivedError(WebView view, final int errorCode, final String description, String failingUrl) {
-            final boolean errorHandled = eventsListener != null && eventsListener.onError(ChatWindowErrorType.WebViewClient, errorCode, description);
-            post(new Runnable() {
-                @Override
-                public void run() {
-                    onErrorDetected(errorHandled, ChatWindowErrorType.WebViewClient, errorCode, description);
-                }
-            });
-            super.onReceivedError(view, errorCode, description, failingUrl);
-            Log.e("ChatWindow Widget", "onReceivedError: " + errorCode + ": desc: " + description + " url: " + failingUrl);
+            boolean isVisible = ChatWindowViewImpl.this.getVisibility() == View.VISIBLE;
+            if (!isErrorOccur && isVisible){
+                isErrorOccur = true;
+                final boolean errorHandled = eventsListener != null && eventsListener.onError(ChatWindowErrorType.WebViewClient, errorCode, description);
+                post(new Runnable() {
+                    @Override
+                    public void run() {
+                        onErrorDetected(errorHandled, ChatWindowErrorType.WebViewClient, errorCode, description);
+                    }
+                });
+                super.onReceivedError(view, errorCode, description, failingUrl);
+                onHideChatWindow();
+                Log.e("ChatWindow Widget", "onReceivedError: " + errorCode + ": desc: " + description + " url: " + failingUrl);
+            }
         }
 
         @SuppressWarnings("deprecation")
@@ -555,15 +569,9 @@ public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
     }
 
     private void onErrorDetected(boolean errorHandled, ChatWindowErrorType errorType, int errorCode, String errorDescription) {
-        progressBar.setVisibility(GONE);
-        if (!errorHandled) {
-            if (chatUiReady && errorType == ChatWindowErrorType.WebViewClient && errorCode == -2) {
-                //Internet connection error. Connection issues handled in the chat window
-                return;
-            }
-            webView.setVisibility(GONE);
-            statusText.setVisibility(View.VISIBLE);
-            reloadButton.setVisibility(VISIBLE);
+        isErrorOccur = true;
+        if (!errorHandled){
+            hideChatWindow();
         }
     }
 
@@ -617,13 +625,13 @@ public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
         @Override
         public boolean onConsoleMessage(final ConsoleMessage consoleMessage) {
             if (consoleMessage.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
-                final boolean errorHandled = eventsListener != null && eventsListener.onError(ChatWindowErrorType.Console, -1, consoleMessage.message());
-                post(new Runnable() {
-                    @Override
-                    public void run() {
-                        onErrorDetected(errorHandled, ChatWindowErrorType.Console, -1, consoleMessage.message());
-                    }
-                });
+//                final boolean errorHandled = eventsListener != null && eventsListener.onError(ChatWindowErrorType.Console, -1, consoleMessage.message());
+//                post(new Runnable() {
+//                    @Override
+//                    public void run() {
+//                        onErrorDetected(errorHandled, ChatWindowErrorType.Console, -1, consoleMessage.message());
+//                    }
+//                });
             }
             Log.i("ChatWindowView", "onConsoleMessage" + consoleMessage.messageLevel().name() + " " + consoleMessage.message());
             return super.onConsoleMessage(consoleMessage);
@@ -702,7 +710,7 @@ public class ChatWindowViewImpl extends FrameLayout implements ChatWindowView {
             eventsListener.onStartFilePickerActivity(intent, REQUEST_CODE_FILE_UPLOAD);
         } else {
             Log.e("ChatWindowView", "You must provide a listener to handle file sharing");
-            Toast.makeText(getContext(), R.string.cant_share_files, Toast.LENGTH_SHORT).show();
+//            Toast.makeText(getContext(), R.string.cant_share_files, Toast.LENGTH_SHORT).show();
         }
     }
 }
