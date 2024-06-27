@@ -5,6 +5,18 @@ Embedding mobile chat window in Android application for
 
 **LiveChat:** https://developers.livechat.com/docs/getting-started/installing-livechat/android-widget/
 
+
+# Changes
+
+I am deeply grateful for the original author's tremendous contributions, which have allowed me to stand on the shoulders of giants.
+
+I have fixed several issues in the original Live Chat Android SDK and forked the improved version to my repository:
+
++ The original chat component included two WebViews. I removed one redundant WebView, which optimized memory usage and improved load times.
++ Removed the final keyword from the ChatWindowActivity class in the original SDK, allowing for future extension and inheritance of this class.
++ Removed the status text and reload button from the original SDK's chat component, enhancing the user experience.
++ The callback function design in the original SDK was unreasonable. I rewrote parts of the callback function logic.
+
 # Installation
 
 [![Release](https://jitpack.io/v/ihgoo/chat-window-android.svg)](https://jitpack.io/#ihgoo/chat-window-android)
