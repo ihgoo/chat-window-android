@@ -7,10 +7,9 @@ Embedding mobile chat window in Android application for
 
 # Installation
 
-[![Release](https://jitpack.io/v/User/Repo.svg)]
-(https://jitpack.io/#livechat/chat-window-android)
+[![Release](https://jitpack.io/v/ihgoo/chat-window-android.svg)](https://jitpack.io/#ihgoo/chat-window-android)
 
-https://jitpack.io/#livechat/chat-window-android
+https://jitpack.io/#ihgoo/chat-window-android
 
 To get a project into your build:
 
@@ -197,7 +196,7 @@ public boolean onError(ChatWindowErrorType errorType, int errorCode, String erro
 After your user signs out of the app, you might want to clear the chat session.
 You can do that by invoking static method on `ChatWindowUtils.clearSession(Context)` from anywhere in the app.
 In case your `ChatWindowView` is attached in course of the log out flow, you also going to need to reload it by calling
-`chatWindow.reload(false)` after clearSession code. See [FullScreenWindowActivityExample.java](https://github.com/livechat/chat-window-android/blob/master/app/src/main/java/com/livechatinc/livechatwidgetexample/FullScreenWindowActivityExample.java)
+`chatWindow.reload(false)` after clearSession code. See [FullScreenWindowActivityExample.java](https://github.com/ihgoo/chat-window-android/blob/master/app/src/main/java/com/livechatinc/livechatwidgetexample/FullScreenWindowActivityExample.java)
 
 In case your ChatWindow isn't recreated when ChatWindowConfiguration changes (i.e. VisitorName), you might want to full reload chat window by invoking `chatWindow.reload(true)`
 
